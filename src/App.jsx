@@ -12,6 +12,8 @@ import OrdersPage from './pages/OrdersPage'
 import ProfilePage from './pages/ProfilePage'
 import FarmerDashboardPage from './pages/FarmerDashboardPage'
 import AddProductPage from './pages/AddProductPage'
+import ProviderDashboardPage from './pages/ProviderDashboardPage'
+import AddServicePage from './pages/AddServicePage'
 import BottomNav from './components/BottomNav'
 
 function ProtectedRoute({ children }) {
@@ -23,10 +25,7 @@ function ProtectedRoute({ children }) {
 
 function FullScreenSpinner() {
   return (
-    <div style={{
-      height: '100dvh', display: 'flex',
-      alignItems: 'center', justifyContent: 'center'
-    }}>
+    <div style={{ height: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div className="spinner" />
     </div>
   )
@@ -43,13 +42,24 @@ function AppRoutes() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
-        {/* Protected */}
+        {/* Shared */}
         <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
         <Route path="/product/:id" element={<ProtectedRoute><ProductDetailPage /></ProtectedRoute>} />
         <Route path="/orders" element={<ProtectedRoute><OrdersPage /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-        <Route path="/dashboard" element={<ProtectedRoute><FarmerDashboardPage /></ProtectedRoute>} />
+
+        {/* Farmer routes */}
+        <Route path="/dashboard" element={
+          <ProtectedRoute>
+            {profile?.role === 'provider'
+              ? <ProviderDashboardPage />
+              : <FarmerDashboardPage />}
+          </ProtectedRoute>
+        } />
         <Route path="/add-product" element={<ProtectedRoute><AddProductPage /></ProtectedRoute>} />
+
+        {/* Logistics provider routes */}
+        <Route path="/add-service" element={<ProtectedRoute><AddServicePage /></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
