@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './lib/AuthContext'
 
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
+import AuthCallbackPage from './pages/AuthCallbackPage'
 import HomePage from './pages/HomePage'
 import ProductDetailPage from './pages/ProductDetailPage'
 import OrdersPage from './pages/OrdersPage'
@@ -13,7 +14,6 @@ import FarmerDashboardPage from './pages/FarmerDashboardPage'
 import AddProductPage from './pages/AddProductPage'
 import BottomNav from './components/BottomNav'
 
-// Redirects to /login if not logged in
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <FullScreenSpinner />
@@ -41,33 +41,19 @@ function AppRoutes() {
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
-        {/* Buyer routes */}
-        <Route path="/" element={
-          <ProtectedRoute><HomePage /></ProtectedRoute>
-        } />
-        <Route path="/product/:id" element={
-          <ProtectedRoute><ProductDetailPage /></ProtectedRoute>
-        } />
-        <Route path="/orders" element={
-          <ProtectedRoute><OrdersPage /></ProtectedRoute>
-        } />
-        <Route path="/profile" element={
-          <ProtectedRoute><ProfilePage /></ProtectedRoute>
-        } />
-
-        {/* Farmer routes */}
-        <Route path="/dashboard" element={
-          <ProtectedRoute><FarmerDashboardPage /></ProtectedRoute>
-        } />
-        <Route path="/add-product" element={
-          <ProtectedRoute><AddProductPage /></ProtectedRoute>
-        } />
+        {/* Protected */}
+        <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+        <Route path="/product/:id" element={<ProtectedRoute><ProductDetailPage /></ProtectedRoute>} />
+        <Route path="/orders" element={<ProtectedRoute><OrdersPage /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+        <Route path="/dashboard" element={<ProtectedRoute><FarmerDashboardPage /></ProtectedRoute>} />
+        <Route path="/add-product" element={<ProtectedRoute><AddProductPage /></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* Bottom nav only shows when logged in */}
       {user && <BottomNav role={profile?.role} />}
     </>
   )
