@@ -1,39 +1,54 @@
 // src/pages/AuthCallbackPage.jsx
-// ─────────────────────────────────────────────────────
-// Google redirects users back to /auth/callback after login.
-// This page picks them up, saves their profile if new,
-// then sends them to the home screen.
-// ─────────────────────────────────────────────────────
+// Handles Google OAuth redirect back to the app.
+// Also catches error states from Supabase OAuth flow.
+
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
 export default function AuthCallbackPage() {
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     async function handleCallback() {
-      const { data: { session }, error } = await supabase.auth.getSession()
+      // Check for OAuth errors in the URL first
+      const params = new URLSearchParams(location.search)
+      const error = params.get('error')
+      const errorDescription = params.get('error_description')
 
-      if (error || !session) {
-        toast.error('Sign-in failed. Please try again.')
+      if (error) {
+        // OAuth state errors usually mean the user took too long
+        // or opened in a different browser tab — just send them back to login
+        const message = error === 'bad_oauth_state'
+          ? 'Sign-in session expired. Please try again.'
+          : errorDescription?.replace(/\+/g, ' ') || 'Sign-in failed. Please try again.'
+        toast.error(message)
+        navigate('/login')
+        return
+      }
+
+      // No error — try to get the session Supabase set via the URL hash
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+
+      if (sessionError || !session) {
+        toast.error('Could not complete sign-in. Please try again.')
         navigate('/login')
         return
       }
 
       const user = session.user
 
-      // Check if they already have a profile (returning Google user)
+      // Check if this is a new user (no profile row yet)
       const { data: existing } = await supabase
         .from('users')
-        .select('id')
+        .select('id, role')
         .eq('id', user.id)
         .single()
 
       if (!existing) {
-        // New Google user — create their profile
-        // Role comes from localStorage (set before Google redirect)
+        // New Google user — save their profile
         const role = localStorage.getItem('pendingRole') || 'buyer'
         localStorage.removeItem('pendingRole')
 
@@ -44,7 +59,6 @@ export default function AuthCallbackPage() {
           role,
         })
 
-        // Wallet for farmers and providers
         if (role === 'farmer' || role === 'provider') {
           await supabase.from('wallets').upsert({ user_id: user.id, balance: 0 })
         }
@@ -58,7 +72,7 @@ export default function AuthCallbackPage() {
     }
 
     handleCallback()
-  }, [navigate])
+  }, [navigate, location])
 
   return (
     <div style={{

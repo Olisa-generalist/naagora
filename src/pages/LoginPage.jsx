@@ -53,7 +53,7 @@ export default function LoginPage() {
     setGoogleLoading(true)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin + '/auth/callback' }
+      options: { redirectTo: 'https://naagora.vercel.app/auth/callback' }
     })
     if (error) {
       toast.error('Google sign-in failed. Try again.')
