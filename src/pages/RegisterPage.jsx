@@ -1,7 +1,6 @@
 // src/pages/RegisterPage.jsx
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { setCookie } from './AuthCallbackPage'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -12,11 +11,10 @@ const ROLES = [
 ]
 
 export default function RegisterPage() {
-  const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const [emailSent, setEmailSent] = useState(false) // shows confirmation screen
+  const [emailSent, setEmailSent] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'buyer' })
 
   function set(field) { return e => setForm(f => ({ ...f, [field]: e.target.value })) }
@@ -26,73 +24,73 @@ export default function RegisterPage() {
     const conflictRole = intendedRole === 'farmer' ? 'provider' : 'farmer'
     const { data } = await supabase
       .from('users').select('role').eq('email', email).eq('role', conflictRole).single()
-    if (data) {
-      return intendedRole === 'farmer'
-        ? 'This email is already registered as a Logistics provider. Farmers and logistics providers must use separate email addresses.'
-        : 'This email is already registered as a Farmer. Farmers and logistics providers must use separate email addresses.'
-    }
+    if (data) return intendedRole === 'farmer'
+      ? 'This email is already a Logistics provider. Use a different email for your farm.'
+      : 'This email is already a Farmer. Use a different email for your logistics business.'
     return null
   }
 
   async function handleRegister(e) {
     e.preventDefault()
-    if (!form.name || !form.email || !form.password || !form.role) return
     if (form.password.length < 6) { toast.error('Password must be at least 6 characters'); return }
     setLoading(true)
-
     const conflict = await checkEmailRoleConflict(form.email, form.role)
     if (conflict) { toast.error(conflict); setLoading(false); return }
 
-    // Store name and role in Supabase user metadata so we can
-    // retrieve them when the user confirms their email and lands back
     const { data, error } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
       options: {
-        data: {
-          full_name: form.name,
-          role: form.role,
-          pending_email: form.email,
-        },
-        // After email confirmation, redirect back to app
+        data: { full_name: form.name, role: form.role },
         emailRedirectTo: 'https://naagora.vercel.app/auth/callback'
       }
     })
-
     if (error) { toast.error(error.message); setLoading(false); return }
 
-    // Pre-save the profile row now using the user ID
-    // Even before confirmation, we save it so the role isn't lost
     if (data?.user?.id) {
       await supabase.from('users').upsert({
-        id: data.user.id,
-        full_name: form.name,
-        email: form.email,
-        role: form.role,
+        id: data.user.id, full_name: form.name,
+        email: form.email, role: form.role,
       })
       if (form.role === 'farmer' || form.role === 'provider') {
         await supabase.from('wallets').upsert({ user_id: data.user.id, balance: 0 })
       }
     }
-
-    // Show confirmation screen instead of navigating away
     setEmailSent(true)
     setLoading(false)
   }
 
   async function handleGoogleSignup() {
     setGoogleLoading(true)
-    localStorage.setItem('pendingRole', form.role)
-    sessionStorage.setItem('pendingRole', form.role)
-    setCookie('naagora_pending_role', form.role, 10)
+
+    // KEY FIX: Store the pending role in Supabase BEFORE redirecting to Google.
+    // We create a temporary row in a pending_roles table keyed by a random token
+    // that we pass through the OAuth state parameter. This survives any browser
+    // context change because it lives in the database, not the browser.
+    const token = Math.random().toString(36).substring(2) + Date.now().toString(36)
+
+    const { error: storeError } = await supabase
+      .from('pending_roles')
+      .insert({ token, role: form.role, created_at: new Date().toISOString() })
+
+    if (storeError) {
+      // Table may not exist yet — fall back to cookie method
+      console.warn('pending_roles table not found, using cookie fallback')
+      document.cookie = `nr=${form.role}; max-age=600; path=/; SameSite=Lax`
+      localStorage.setItem('pendingRole', form.role)
+      sessionStorage.setItem('pendingRole', form.role)
+    }
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: 'https://naagora.vercel.app/auth/callback' }
+      options: {
+        redirectTo: `https://naagora.vercel.app/auth/callback?role_token=${token}`,
+        queryParams: { access_type: 'offline', prompt: 'consent' }
+      }
     })
     if (error) { toast.error('Google sign-up failed. Try again.'); setGoogleLoading(false) }
   }
 
-  // ── Email sent confirmation screen ──
   if (emailSent) {
     return (
       <div className="auth-page" style={{ textAlign: 'center' }}>
@@ -102,25 +100,18 @@ export default function RegisterPage() {
           We sent a confirmation link to <strong>{form.email}</strong>.
           Click the link in that email to activate your Naagora account.
         </p>
-        <div style={{
-          background: 'var(--surface-2)', borderRadius: 10,
-          padding: '12px 16px', marginBottom: 24,
-          fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, textAlign: 'left'
-        }}>
+        <div style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '12px 16px', marginBottom: 24, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, textAlign: 'left' }}>
           <strong>Didn't get the email?</strong><br />
-          Check your spam/junk folder. It may take a few minutes to arrive.
+          Check your spam/junk folder. It may take a few minutes.
         </div>
-        <button
-          className="btn btn-full"
-          onClick={async () => {
-            const { error } = await supabase.auth.resend({
-              type: 'signup', email: form.email,
-              options: { emailRedirectTo: 'https://naagora.vercel.app/auth/callback' }
-            })
-            if (error) toast.error(error.message)
-            else toast.success('Confirmation email resent!')
-          }}
-        >
+        <button className="btn btn-full" onClick={async () => {
+          const { error } = await supabase.auth.resend({
+            type: 'signup', email: form.email,
+            options: { emailRedirectTo: 'https://naagora.vercel.app/auth/callback' }
+          })
+          if (error) toast.error(error.message)
+          else toast.success('Confirmation email resent!')
+        }}>
           Resend confirmation email
         </button>
         <div style={{ marginTop: 12 }}>
@@ -132,7 +123,6 @@ export default function RegisterPage() {
     )
   }
 
-  // ── Main registration form ──
   return (
     <div className="auth-page">
       <div className="auth-logo">Naagora</div>
@@ -154,7 +144,7 @@ export default function RegisterPage() {
       {(form.role === 'farmer' || form.role === 'provider') && (
         <div style={{ background: '#FAEEDA', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#633806', marginBottom: 14, lineHeight: 1.6 }}>
           💡 {form.role === 'farmer'
-            ? 'Farmers can also browse and buy on Naagora with this account. If you also run a logistics business, register it with a different email.'
+            ? 'Farmers can also browse and buy on Naagora with this same account. If you also run a logistics business, register it with a different email.'
             : 'Logistics providers can also browse and buy on Naagora with this account. If you also farm, register that with a different email.'}
         </div>
       )}
@@ -162,7 +152,7 @@ export default function RegisterPage() {
       <button className="btn btn-full" onClick={handleGoogleSignup} disabled={googleLoading}
         style={{ marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
         <GoogleIcon />
-        {googleLoading ? 'Redirecting...' : 'Continue with Google'}
+        {googleLoading ? 'Redirecting to Google...' : `Continue with Google as ${form.role}`}
       </button>
 
       <div className="auth-divider">or register with email</div>
@@ -179,13 +169,9 @@ export default function RegisterPage() {
         <div className="input-group">
           <label>Password</label>
           <div style={{ position: 'relative' }}>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              placeholder="At least 6 characters"
-              value={form.password} onChange={set('password')}
-              style={{ paddingRight: 44 }} required />
+            <input type={showPassword ? 'text' : 'password'} placeholder="At least 6 characters"
+              value={form.password} onChange={set('password')} style={{ paddingRight: 44 }} required />
             <button type="button" onClick={() => setShowPassword(v => !v)}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
               style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 0, display: 'flex', alignItems: 'center' }}>
               {showPassword
                 ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
