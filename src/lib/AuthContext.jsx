@@ -1,4 +1,11 @@
 // src/lib/AuthContext.jsx
+// ─────────────────────────────────────────────
+// Race condition fix:
+// If AuthCallbackPage is in the middle of saving a Google profile,
+// we wait for it to finish before reading — otherwise we read
+// the old buyer row and overwrite the correct role.
+// ─────────────────────────────────────────────
+
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 
@@ -17,17 +24,41 @@ export function AuthProvider({ children }) {
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (_event, session) => {
         setUser(session?.user ?? null)
-        if (session?.user) fetchProfile(session.user)
-        else { setProfile(null); setLoading(false) }
+        if (session?.user) {
+          // If AuthCallbackPage is currently saving the profile,
+          // wait for it to finish before we try to read
+          await waitForCallback()
+          fetchProfile(session.user)
+        } else {
+          setProfile(null)
+          setLoading(false)
+        }
       }
     )
     return () => subscription.unsubscribe()
   }, [])
 
-  // Fetches profile from users table, falls back to auth metadata
-  // so name and role are always available even if profile row is incomplete
+  // Waits until AuthCallbackPage clears its in-progress flag
+  // Polls every 300ms, gives up after 5 seconds
+  function waitForCallback() {
+    return new Promise((resolve) => {
+      const inProgress = sessionStorage.getItem('naagora_callback_in_progress')
+      if (!inProgress) { resolve(); return }
+
+      let attempts = 0
+      const interval = setInterval(() => {
+        attempts++
+        const stillInProgress = sessionStorage.getItem('naagora_callback_in_progress')
+        if (!stillInProgress || attempts > 16) {
+          clearInterval(interval)
+          resolve()
+        }
+      }, 300)
+    })
+  }
+
   async function fetchProfile(authUser, attempt = 1) {
     const { data } = await supabase
       .from('users')
@@ -36,15 +67,12 @@ export function AuthProvider({ children }) {
       .single()
 
     if (data && data.full_name && data.role) {
-      // Profile row exists and is complete — use it
       setProfile(data)
       setLoading(false)
     } else if (attempt < 4) {
-      // Row may still be writing — retry after short delay
       setTimeout(() => fetchProfile(authUser, attempt + 1), 600)
     } else {
-      // After retries, build profile from auth metadata as fallback
-      // This handles cases where profile save failed but auth succeeded
+      // Fallback to auth metadata
       const meta = authUser.user_metadata || {}
       const fallbackProfile = {
         id: authUser.id,
@@ -52,9 +80,8 @@ export function AuthProvider({ children }) {
         email: authUser.email,
         role: data?.role || meta.role || 'buyer',
         is_verified: data?.is_verified || false,
+        profile_photo: data?.profile_photo || null,
       }
-
-      // Try to save/fix the profile row if it was incomplete
       await supabase.from('users').upsert(fallbackProfile)
       setProfile(fallbackProfile)
       setLoading(false)
