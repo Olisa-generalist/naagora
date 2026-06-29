@@ -67,6 +67,32 @@ export default function CheckoutPage() {
 
   function formatMoney(n) { return '₦' + Number(n).toLocaleString() }
 
+  async function handlePaymentSuccess(orderId, reference) {
+    try {
+      await supabase
+        .from('payments')
+        .update({ status: 'held', paid_at: new Date().toISOString() })
+        .eq('paystack_reference', reference)
+
+      await supabase
+        .from('orders')
+        .update({ status: 'paid' })
+        .eq('id', orderId)
+
+      await supabase
+        .from('order_legs')
+        .update({ status: 'paid_held' })
+        .eq('order_id', orderId)
+
+      toast.success('Payment successful! Order confirmed.')
+      navigate(`/orders/${orderId}`)
+    } catch (err) {
+      console.error('Post-payment update error:', err)
+      toast.success('Payment received! Redirecting to your order...')
+      navigate(`/orders/${orderId}`)
+    }
+  }
+
   async function handlePay() {
     if (!address.trim()) { toast.error('Please enter your delivery address'); return }
     if (!deliveryState) { toast.error('Please select your delivery state'); return }
@@ -166,25 +192,10 @@ export default function CheckoutPage() {
           setPaying(false)
           navigate(`/orders/${order.id}`)
         },
-        callback: async (response) => {
-          // Payment successful — update order status
-          await supabase
-            .from('payments')
-            .update({ status: 'held', paid_at: new Date().toISOString() })
-            .eq('paystack_reference', reference)
-
-          await supabase
-            .from('orders')
-            .update({ status: 'paid' })
-            .eq('id', order.id)
-
-          await supabase
-            .from('order_legs')
-            .update({ status: 'paid_held' })
-            .eq('order_id', order.id)
-
-          toast.success('Payment successful! Order confirmed.')
-          navigate(`/orders/${order.id}`)
+        callback: (response) => {
+          // Paystack requires a plain (non-async) callback
+          // We fire the async work separately
+          handlePaymentSuccess(order.id, reference)
         }
       })
 
