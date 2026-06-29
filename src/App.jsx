@@ -9,7 +9,10 @@ import AuthCallbackPage from './pages/AuthCallbackPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import HomePage from './pages/HomePage'
 import ProductDetailPage from './pages/ProductDetailPage'
+import CheckoutPage from './pages/CheckoutPage'
 import OrdersPage from './pages/OrdersPage'
+import OrderDetailPage from './pages/OrderDetailPage'
+import ReviewPage from './pages/ReviewPage'
 import ProfilePage from './pages/ProfilePage'
 import FarmerDashboardPage from './pages/FarmerDashboardPage'
 import AddProductPage from './pages/AddProductPage'
@@ -36,27 +39,36 @@ function FullScreenSpinner() {
 
 function AppRoutes() {
   const { user, profile } = useAuth()
-
   return (
     <>
       <Routes>
+        {/* Public */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
+        {/* Buyer flow */}
         <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
         <Route path="/product/:id" element={<ProtectedRoute><ProductDetailPage /></ProtectedRoute>} />
+        <Route path="/checkout" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
         <Route path="/orders" element={<ProtectedRoute><OrdersPage /></ProtectedRoute>} />
+        <Route path="/orders/:id" element={<ProtectedRoute><OrderDetailPage /></ProtectedRoute>} />
+        <Route path="/review/:orderId" element={<ProtectedRoute><ReviewPage /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
 
+        {/* Farmer */}
         <Route path="/dashboard" element={
           <ProtectedRoute>
             {profile?.role === 'provider' ? <ProviderDashboardPage /> : <FarmerDashboardPage />}
           </ProtectedRoute>
         } />
         <Route path="/add-product" element={<ProtectedRoute><AddProductPage /></ProtectedRoute>} />
+
+        {/* Logistics */}
         <Route path="/add-service" element={<ProtectedRoute><AddServicePage /></ProtectedRoute>} />
+
+        {/* Admin */}
         <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
