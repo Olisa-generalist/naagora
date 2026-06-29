@@ -209,7 +209,7 @@ export default function ProductDetailPage() {
           <button
             className="btn btn-primary"
             style={{ flex: 1, height: 38 }}
-            onClick={() => toast.success('Checkout coming soon! We are setting up Paystack payments.')}
+            onClick={() => navigate('/checkout', { state: { product, quantity } })}
           >
             Order · ₦{total}
           </button>
