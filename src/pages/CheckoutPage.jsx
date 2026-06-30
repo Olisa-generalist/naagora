@@ -103,6 +103,19 @@ export default function CheckoutPage() {
     setPaying(true)
 
     try {
+      // Fetch the farmer's actual business/farm address for pickup —
+      // falls back to LGA/state if they haven't set one yet
+      const { data: farmerProfile } = await supabase
+        .from('users')
+        .select('business_address')
+        .eq('id', product.farmer_id)
+        .single()
+
+      const pickupAddress = farmerProfile?.business_address
+        || [product.lga, product.state].filter(Boolean).join(', ')
+        || product.state
+        || 'Pickup address not specified by farmer'
+
       // Step 1: Create the order in Supabase (status = pending)
       const orderType = selectedLogistics
         ? 'product_with_logistics'
@@ -115,6 +128,10 @@ export default function CheckoutPage() {
           order_type: orderType,
           delivery_address: address,
           delivery_state: deliveryState,
+          // Pickup location comes from the farmer's product location —
+          // this is where the logistics provider collects the goods
+          pickup_address: pickupAddress,
+          pickup_state: product.state || null,
           subtotal,
           platform_fee: platformFee,
           total_amount: total,
