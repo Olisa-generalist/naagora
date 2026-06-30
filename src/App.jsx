@@ -14,10 +14,12 @@ import OrdersPage from './pages/OrdersPage'
 import OrderDetailPage from './pages/OrderDetailPage'
 import ReviewPage from './pages/ReviewPage'
 import ProfilePage from './pages/ProfilePage'
+import PublicProfilePage from './pages/PublicProfilePage'
 import FarmerDashboardPage from './pages/FarmerDashboardPage'
 import AddProductPage from './pages/AddProductPage'
 import ProviderDashboardPage from './pages/ProviderDashboardPage'
 import AddServicePage from './pages/AddServicePage'
+import JobDetailPage from './pages/JobDetailPage'
 import AdminPage from './pages/AdminPage'
 import BottomNav from './components/BottomNav'
 import AiChat from './components/AiChat'
@@ -57,6 +59,7 @@ function AppRoutes() {
         <Route path="/orders/:id" element={<ProtectedRoute><OrderDetailPage /></ProtectedRoute>} />
         <Route path="/review/:orderId" element={<ProtectedRoute><ReviewPage /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+        <Route path="/profile/:userId" element={<ProtectedRoute><PublicProfilePage /></ProtectedRoute>} />
 
         {/* Farmer */}
         <Route path="/dashboard" element={
@@ -68,6 +71,7 @@ function AppRoutes() {
 
         {/* Logistics */}
         <Route path="/add-service" element={<ProtectedRoute><AddServicePage /></ProtectedRoute>} />
+        <Route path="/job/:legId" element={<ProtectedRoute><JobDetailPage /></ProtectedRoute>} />
 
         {/* Admin */}
         <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
