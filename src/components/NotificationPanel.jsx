@@ -1,6 +1,6 @@
 // src/components/NotificationPanel.jsx
-// Bell icon + dropdown panel, positioned above the AI chat bubble.
-// Shows order updates, payment releases, listing decisions.
+// Bell icon sits in the top-right corner of every screen's topbar.
+// Dropdown panel opens below it.
 
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -29,15 +29,12 @@ export default function NotificationPanel() {
     if (!user) return
     fetchNotifications()
 
-    // Real-time subscription — new notifications appear instantly
     const channel = supabase
       .channel('notifications_' + user.id)
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'notifications',
         filter: `user_id=eq.${user.id}`
-      }, () => {
-        fetchNotifications()
-      })
+      }, () => fetchNotifications())
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
@@ -50,17 +47,12 @@ export default function NotificationPanel() {
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(30)
-
     setNotifications(data || [])
     setUnreadCount((data || []).filter(n => !n.is_read).length)
   }
 
   async function markAllRead() {
-    await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', user.id)
-      .eq('is_read', false)
+    await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false)
     fetchNotifications()
   }
 
@@ -82,31 +74,30 @@ export default function NotificationPanel() {
     if (mins < 60) return `${mins}m ago`
     const hrs = Math.floor(mins / 60)
     if (hrs < 24) return `${hrs}h ago`
-    const days = Math.floor(hrs / 24)
-    return `${days}d ago`
+    return `${Math.floor(hrs / 24)}d ago`
   }
 
   return (
     <>
-      {/* Bell button — positioned above AI chat bubble */}
+      {/* Bell button — fixed top-right corner, above everything */}
       <button
         onClick={() => setOpen(v => !v)}
         aria-label="Notifications"
         style={{
-          position: 'fixed', bottom: 144, right: 16, zIndex: 50,
-          width: 44, height: 44, borderRadius: '50%',
+          position: 'fixed', top: 14, right: 16, zIndex: 50,
+          width: 38, height: 38, borderRadius: '50%',
           background: '#fff', border: '0.5px solid var(--border, rgba(0,0,0,0.12))',
           cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 18, boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+          fontSize: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
         }}
       >
         🔔
         {unreadCount > 0 && (
           <span style={{
             position: 'absolute', top: -2, right: -2,
-            minWidth: 18, height: 18, borderRadius: 9,
+            minWidth: 17, height: 17, borderRadius: 9,
             background: '#D85A30', color: '#fff',
-            fontSize: 10, fontWeight: 600,
+            fontSize: 9, fontWeight: 600,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             border: '2px solid #fff', padding: '0 4px'
           }}>
@@ -115,19 +106,17 @@ export default function NotificationPanel() {
         )}
       </button>
 
-      {/* Dropdown panel */}
       {open && (
         <>
-          {/* Backdrop to close on outside tap */}
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 49 }} />
 
           <div style={{
-            position: 'fixed', bottom: 196, right: 16, zIndex: 51,
+            position: 'fixed', top: 58, right: 16, zIndex: 51,
             width: 320, maxWidth: 'calc(100vw - 32px)',
             background: '#fff', borderRadius: 14,
             border: '0.5px solid var(--border, rgba(0,0,0,0.1))',
             boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
-            maxHeight: '60vh', display: 'flex', flexDirection: 'column'
+            maxHeight: '70vh', display: 'flex', flexDirection: 'column'
           }}>
             <div style={{
               padding: '14px 16px 10px', borderBottom: '0.5px solid var(--border, rgba(0,0,0,0.1))',
@@ -162,24 +151,14 @@ export default function NotificationPanel() {
                       display: 'flex', gap: 10
                     }}
                   >
-                    <div style={{ fontSize: 18, flexShrink: 0 }}>
-                      {TYPE_ICONS[notif.type] || TYPE_ICONS.default}
-                    </div>
+                    <div style={{ fontSize: 18, flexShrink: 0 }}>{TYPE_ICONS[notif.type] || TYPE_ICONS.default}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                        <div style={{ fontWeight: notif.is_read ? 400 : 600, fontSize: 13 }}>
-                          {notif.title}
-                        </div>
-                        {!notif.is_read && (
-                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#0F6E56', flexShrink: 0, marginTop: 4 }} />
-                        )}
+                        <div style={{ fontWeight: notif.is_read ? 400 : 600, fontSize: 13 }}>{notif.title}</div>
+                        {!notif.is_read && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#0F6E56', flexShrink: 0, marginTop: 4 }} />}
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-2, #5f5e5a)', marginTop: 2, lineHeight: 1.4 }}>
-                        {notif.body}
-                      </div>
-                      <div style={{ fontSize: 10, color: 'var(--text-3, #888)', marginTop: 4 }}>
-                        {timeAgo(notif.created_at)}
-                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-2, #5f5e5a)', marginTop: 2, lineHeight: 1.4 }}>{notif.body}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-3, #888)', marginTop: 4 }}>{timeAgo(notif.created_at)}</div>
                     </div>
                   </div>
                 ))
