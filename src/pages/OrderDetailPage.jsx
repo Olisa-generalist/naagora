@@ -32,20 +32,59 @@ export default function OrderDetailPage() {
 
   async function fetchOrder() {
     setLoading(true)
+
+    // STEP 1: Get the order itself
     const { data: orderData } = await supabase.from('orders').select('*').eq('id', id).single()
 
-    const { data: legsData } = await supabase
+    // STEP 2: Get raw legs — no nested joins, same pattern as the
+    // dashboards. Nested joins through multiple foreign keys can
+    // silently return null for the joined data even when RLS allows
+    // the underlying rows, so we fetch and stitch manually.
+    const { data: rawLegs, error: legsError } = await supabase
       .from('order_legs')
-      .select(`
-        *,
-        products ( name, unit, photos ),
-        logistics_services ( name, vehicle_type, photos ),
-        provider:users!order_legs_provider_id_fkey ( id, full_name, phone, profile_photo )
-      `)
+      .select('*')
       .eq('order_id', id)
       .order('leg_type')
 
-    // Also fetch buyer info (for provider view) and farmer address (for provider view)
+    if (legsError) console.error('Fetch legs error:', legsError)
+
+    let enrichedLegs = []
+    if (rawLegs && rawLegs.length > 0) {
+      // STEP 3: Fetch products for product legs
+      const productIds = [...new Set(rawLegs.map(l => l.product_id).filter(Boolean))]
+      const { data: products } = productIds.length
+        ? await supabase.from('products').select('id, name, unit, photos').in('id', productIds)
+        : { data: [] }
+
+      // STEP 4: Fetch logistics services for logistics legs
+      const serviceIds = [...new Set(rawLegs.map(l => l.logistics_service_id).filter(Boolean))]
+      const { data: services } = serviceIds.length
+        ? await supabase.from('logistics_services').select('id, name, vehicle_type, photos').in('id', serviceIds)
+        : { data: [] }
+
+      // STEP 5: Fetch provider (farmer or 3PL) contact info for every leg
+      const providerIds = [...new Set(rawLegs.map(l => l.provider_id).filter(Boolean))]
+      const { data: providers, error: providersError } = providerIds.length
+        ? await supabase.from('users').select('id, full_name, phone, profile_photo').in('id', providerIds)
+        : { data: [] }
+
+      if (providersError) console.error('Fetch providers error:', providersError)
+
+      // STEP 6: Stitch it all together
+      enrichedLegs = rawLegs.map(leg => {
+        const product = products?.find(p => p.id === leg.product_id)
+        const service = services?.find(s => s.id === leg.logistics_service_id)
+        const provider = providers?.find(p => p.id === leg.provider_id)
+        return {
+          ...leg,
+          products: product || null,
+          logistics_services: service || null,
+          provider: provider || null,
+        }
+      })
+    }
+
+    // STEP 7: Buyer info (for provider view)
     let buyerInfo = null
     if (orderData) {
       const { data: buyer } = await supabase
@@ -54,7 +93,7 @@ export default function OrderDetailPage() {
     }
 
     setOrder(orderData ? { ...orderData, buyerInfo } : orderData)
-    setLegs(legsData || [])
+    setLegs(enrichedLegs)
     setLoading(false)
   }
 
