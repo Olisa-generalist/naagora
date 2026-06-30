@@ -36,19 +36,61 @@ export default function ProviderDashboardPage() {
   }
 
   async function fetchOrders() {
-    const { data, error } = await supabase
+    // STEP 1: Get the raw legs for this provider — no joins yet.
+    // Splitting into separate queries avoids fragile nested-join
+    // syntax that can silently return empty results if a foreign
+    // key relationship name doesn't match exactly.
+    const { data: rawLegs, error: legsError } = await supabase
       .from('order_legs')
-      .select(`id, status, leg_amount, leg_payout, created_at, tracking_info, provider_id,
-        logistics_services ( name, vehicle_type ),
-        orders ( delivery_address, delivery_state, pickup_address, pickup_state, buyer_id,
-          users!orders_buyer_id_fkey ( full_name ) )`)
+      .select('*')
       .eq('provider_id', user.id)
       .eq('leg_type', 'logistics')
       .order('created_at', { ascending: false })
       .limit(20)
 
-    if (error) console.error('Fetch jobs error:', error)
-    setOrders(data || [])
+    if (legsError) {
+      console.error('Fetch jobs error:', legsError)
+      toast.error('Could not load jobs: ' + legsError.message)
+      setOrders([])
+      return
+    }
+
+    if (!rawLegs || rawLegs.length === 0) {
+      setOrders([])
+      return
+    }
+
+    // STEP 2: Fetch related logistics_services for these legs
+    const serviceIds = [...new Set(rawLegs.map(l => l.logistics_service_id).filter(Boolean))]
+    const { data: services } = serviceIds.length
+      ? await supabase.from('logistics_services').select('id, name, vehicle_type').in('id', serviceIds)
+      : { data: [] }
+
+    // STEP 3: Fetch related orders for these legs
+    const orderIds = [...new Set(rawLegs.map(l => l.order_id).filter(Boolean))]
+    const { data: ordersData } = orderIds.length
+      ? await supabase.from('orders').select('id, delivery_address, delivery_state, pickup_address, pickup_state, buyer_id').in('id', orderIds)
+      : { data: [] }
+
+    // STEP 4: Fetch buyer names for these orders
+    const buyerIds = [...new Set((ordersData || []).map(o => o.buyer_id).filter(Boolean))]
+    const { data: buyers } = buyerIds.length
+      ? await supabase.from('users').select('id, full_name').in('id', buyerIds)
+      : { data: [] }
+
+    // STEP 5: Stitch everything together manually
+    const enriched = rawLegs.map(leg => {
+      const service = services?.find(s => s.id === leg.logistics_service_id)
+      const orderRow = ordersData?.find(o => o.id === leg.order_id)
+      const buyer = buyers?.find(b => b.id === orderRow?.buyer_id)
+      return {
+        ...leg,
+        logistics_services: service || null,
+        orders: orderRow ? { ...orderRow, users: buyer || null } : null,
+      }
+    })
+
+    setOrders(enriched)
   }
 
   async function fetchServices() {
