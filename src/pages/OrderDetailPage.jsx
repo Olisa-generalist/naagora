@@ -59,41 +59,54 @@ export default function OrderDetailPage() {
     try {
       const leg = legs.find(l => l.id === legId)
 
-      // Mark leg as completed
-      await supabase
+      // Step 1: Mark leg as completed
+      const { error: legError } = await supabase
         .from('order_legs')
-        .update({ status: 'completed', completed_at: new Date().toISOString(), payout_released: true, payout_released_at: new Date().toISOString() })
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          payout_released: true,
+          payout_released_at: new Date().toISOString()
+        })
         .eq('id', legId)
 
-      // Credit provider wallet
-      await supabase.rpc('credit_wallet', {
+      if (legError) {
+        console.error('Leg update error:', legError)
+        throw new Error('Could not update order leg: ' + legError.message)
+      }
+
+      // Step 2: Credit provider wallet using security definer function
+      const { error: walletError } = await supabase.rpc('credit_wallet', {
         p_user_id: leg.provider_id,
-        p_amount: leg.leg_payout
-      }).catch(async () => {
-        // Fallback if RPC doesn't exist — direct update
-        const { data: wallet } = await supabase
-          .from('wallets').select('balance, total_earned').eq('user_id', leg.provider_id).single()
-        if (wallet) {
-          await supabase.from('wallets').update({
-            balance: Number(wallet.balance) + Number(leg.leg_payout),
-            total_earned: Number(wallet.total_earned) + Number(leg.leg_payout),
-            updated_at: new Date().toISOString()
-          }).eq('user_id', leg.provider_id)
-        }
+        p_amount: Number(leg.leg_payout)
       })
 
-      // Check if all legs completed → mark order complete
+      if (walletError) {
+        console.error('Wallet credit error:', walletError)
+        // Don't block the flow — admin can manually credit if needed
+        toast.error('Payment release had an issue — contact Naagora support with order ' + id)
+      }
+
+      // Step 3: Check if all legs completed
       const updatedLegs = legs.map(l => l.id === legId ? { ...l, status: 'completed' } : l)
       const allDone = updatedLegs.every(l => l.status === 'completed')
+
       if (allDone) {
-        await supabase.from('orders').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', id)
-        await supabase.from('payments').update({ status: 'released', released_at: new Date().toISOString() }).eq('order_id', id)
+        await supabase
+          .from('orders')
+          .update({ status: 'completed', updated_at: new Date().toISOString() })
+          .eq('id', id)
+        await supabase
+          .from('payments')
+          .update({ status: 'released', released_at: new Date().toISOString() })
+          .eq('order_id', id)
       }
 
       toast.success('Delivery confirmed! Payment released to provider.')
       fetchOrder()
     } catch (err) {
-      toast.error('Could not confirm delivery. Try again.')
+      console.error('Confirm delivery error:', err)
+      toast.error('Could not confirm delivery: ' + (err.message || 'Unknown error'))
     }
     setConfirming(null)
   }

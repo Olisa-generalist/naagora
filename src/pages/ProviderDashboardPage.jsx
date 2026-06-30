@@ -35,14 +35,18 @@ export default function ProviderDashboardPage() {
   }
 
   async function fetchOrders() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('order_legs')
-      .select(`id, status, leg_amount, leg_payout, created_at, tracking_info,
+      .select(`id, status, leg_amount, leg_payout, created_at, tracking_info, provider_id,
         logistics_services ( name, vehicle_type ),
         orders ( delivery_address, delivery_state, pickup_address, pickup_state, buyer_id,
           users!orders_buyer_id_fkey ( full_name ) )`)
-      .eq('provider_id', user.id).eq('leg_type', 'logistics')
-      .order('created_at', { ascending: false }).limit(20)
+      .eq('provider_id', user.id)
+      .eq('leg_type', 'logistics')
+      .order('created_at', { ascending: false })
+      .limit(20)
+
+    if (error) console.error('Fetch jobs error:', error)
     setOrders(data || [])
   }
 

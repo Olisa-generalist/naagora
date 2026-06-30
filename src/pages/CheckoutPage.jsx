@@ -47,7 +47,7 @@ export default function CheckoutPage() {
     setLoadingLogistics(true)
     const { data } = await supabase
       .from('logistics_services')
-      .select(`*, users ( full_name )`)
+      .select(`*, users!logistics_services_provider_id_fkey ( id, full_name )`)
       .eq('is_available', true)
       .eq('is_verified', true)
       .order('base_price', { ascending: true })
@@ -139,10 +139,18 @@ export default function CheckoutPage() {
       // Optional logistics leg
       if (selectedLogistics) {
         const logisticsPayout = Math.round(logisticsAmount * 0.95 * 100) / 100
+
+        // Get the provider_id from the service or from the users join
+        const logisticsProviderId = selectedLogistics.provider_id || selectedLogistics.users?.id
+
+        if (!logisticsProviderId) {
+          console.warn('No provider_id found for logistics service', selectedLogistics)
+        }
+
         await supabase.from('order_legs').insert({
           order_id: order.id,
           leg_type: 'logistics',
-          provider_id: selectedLogistics.provider_id,
+          provider_id: logisticsProviderId,
           logistics_service_id: selectedLogistics.id,
           leg_amount: logisticsAmount,
           leg_payout: logisticsPayout,
